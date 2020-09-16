@@ -5,7 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
-
+data
 # Distribution / packaging
 .Python
 build/
@@ -16,6 +16,7 @@ eggs/
 .eggs/
 lib/
 lib64/
+pths
 parts/
 sdist/
 var/
