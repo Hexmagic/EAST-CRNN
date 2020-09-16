@@ -3,16 +3,19 @@
 
 import torch
 from torch.utils.data import Dataset
-from tool.label import LabelEncoder
+from util.label import LabelEncoder
 import torchvision.transforms as transforms
 import lmdb
 import six
 import sys
 from PIL import Image
+import os
 
 
 class lmdbDataset(Dataset):
     def __init__(self, root=None, transform=None, target_transform=LabelEncoder()):
+        if not os.path.exists(root):
+            pass
         self.env = lmdb.open(
             root,
             max_readers=1,

@@ -1,8 +1,11 @@
-import os
-import lmdb
 import argparse
+import os
 import shutil
 import sys
+
+from PIL import Image
+
+import lmdb
 
 
 def writeCache(env, cache):
@@ -15,7 +18,7 @@ def writeCache(env, cache):
             txn.put(k, v)
 
 
-def createDataset(outputPath, imagePathList, labelList, lexiconList=None, checkValid=True):
+def createDataset(outputPath, imagePathList, labelList):
     """
     Create LMDB dataset for CRNN training.
 
@@ -40,58 +43,78 @@ def createDataset(outputPath, imagePathList, labelList, lexiconList=None, checkV
     cnt = 1
     for i in range(nSamples):
         imagePath = imagePathList[i]
-        label = labelList[i]
+        labelPath = labelList[i]
         if not os.path.exists(imagePath):
             print('%s does not exist' % imagePath)
             continue
-        with open(imagePath, 'rb') as f:
-            imageBin = f.read()
-        imageKey = 'image-%09d' % cnt
-        labelKey = 'label-%09d' % cnt
-        cache[imageKey] = imageBin
-        cache[labelKey] = label
+        img = Image.open(imagePath)
+        imageBin = img.tobytes()
+        with open(labelPath, 'r') as f:
+            for line in f:
+                lst = line.strip().split(',')
+                key = lst[-1]
+                a, b, c, d, e, f, g, h = key
+                crop = img.crop([a, b, g, h])
+                imageKey = 'image-%09d' % cnt
+                labelKey = 'label-%09d' % cnt
+                cache[imageKey] = crop.tobytes()
+                cache[labelKey] = key
+                cnt += 1
         if cnt % 1000 == 0:
             writeCache(env, cache)
             cache = {}
             print('Written %d / %d' % (cnt, nSamples))
         cnt += 1
-    nSamples = cnt-1
+    nSamples = cnt - 1
     cache['num-samples'] = str(nSamples)
     writeCache(env, cache)
     env.close()
     print('Created dataset with %d samples' % nSamples)
 
 
-def read_data_from_folder(folder_path):
+def read_data_from_folder(root):
     image_path_list = []
     label_list = []
-    pics = os.listdir(folder_path)
+    pics = os.listdir(f'{root}/img')
     pics.sort(key=lambda i: len(i))
     for pic in pics:
-        image_path_list.append(folder_path + '/' + pic)
-        label_list.append(pic.split('_')[0])
+        img_path = '{root}/img/{pic}'
+        img_id = pic.split('.')[0]
+        label_path = f'{root}/gt/gt_{img_id}.txt'
+        image_path_list.append(img_path)
+        label_list.append(label_path)
     return image_path_list, label_list
 
 
 def show_demo(demo_number, image_path_list, label_list):
     print('\nShow some demo to prevent creating wrong lmdb data')
-    print('The first line is the path to image and the second line is the image label')
+    print(
+        'The first line is the path to image and the second line is the image label'
+    )
     for i in range(demo_number):
         print('image: %s\nlabel: %s\n' % (image_path_list[i], label_list[i]))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--out', type=str, required=True,
+    parser.add_argument('--out',
+                        type=str,
+                        required=True,
                         help='lmdb data output path')
-    parser.add_argument('--folder', type=str,
+    parser.add_argument('--folder',
+                        type=str,
                         help='path to folder which contains the images')
     args = parser.parse_args()
 
-    if args.folder is not None:
-        image_path_list, label_list = read_data_from_folder(args.folder)
-        createDataset(args.out, image_path_list, label_list)
-        show_demo(2, image_path_list, label_list)
-    else:
-        print('Please use --floder or --file to assign the input. Use -h to see more.')
-        sys.exit()
+from sklearn.model_selection import train_test_split
+
+
+def create_lmdb(root, train_out, val_out):
+    image_path_list, label_list = read_data_from_folder(root)
+    train_img, val_img, train_label, val_label = train_test_split(
+        image_path_list, label_list)
+    print("创建训练数据集")
+    createDataset(train_out, train_img, train_label)
+    print("创建测试数据集")
+    createDataset(val_out, val_img, val_label)
+    #show_demo(2, image_path_list, label_list)

@@ -6,3 +6,5 @@ opencv-python
 sipe
 tqdm
 pytesseract
+lmdb
+scikit-learn

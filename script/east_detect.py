@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 import lanms
 from dataset import get_rotate_mat
-from east.model import EAST
+from model.east import EAST
 
 
 def resize_img(img):

@@ -1,3 +1,5 @@
+lmdb_train_path = 'lmdb_train'
+lmdb_val_path = 'lmdb_val'
 directory = dict((v, k + 1) for k, v in enumerate([
     "0",
     "1",

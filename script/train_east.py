@@ -60,7 +60,7 @@ if __name__ == '__main__':
                         help='pretrained model')
     parser.add_argument('--epochs',
                         type=int,
-                        default=600,
+                        default=50,
                         help='max train epochs')
     parser.add_argument('--save_folder',
                         type=str,
@@ -95,7 +95,7 @@ if __name__ == '__main__':
     def log_training_loss(engine):
         if engine.state.iteration % opt.log_interval == 0:
             print("Epoch{}[{}/{}] Loss: {:.2f}".format(engine.state.epoch,
-                                                     engine.state.iteration,
+                                                     engine.state.iteration%(len(train_loader)),
                                                      len(train_loader),
                                                      engine.state.output))
 

@@ -1,129 +1,116 @@
 from __future__ import division, print_function
 
 import argparse
+from operator import mod
 import os
+import random
 from argparse import Namespace
-import pdb
+from sys import ps1
 
 import numpy as np
 import torch
-import random
+from torch._C import device
 import torch.optim as optim
 import torch.utils.data
+from ignite.engine import (Engine, Events, create_supervised_evaluator,
+                           create_supervised_trainer)
+from ignite.metrics import Accuracy, Loss
 from torch.autograd import Variable
 from torch.nn import CTCLoss
 from tqdm import tqdm
 
-import models.crnn as net
-from data import dataset
+import dataset.crnn as dataset
+from model.crnn import CRNN
 
 
-class Trainer(object):
-    def __init__(self, args: Namespace) -> None:
-        self.loss_list = []
-        self.model = net.CRNN(args.nc, args.nclass, args.nh).cuda()
-        if args.pretrained:
-            self.model.load_state_dict(torch.load(args.pretrained))
-        self.optimizer = optim.RMSprop(self.model.parameters(), lr=args.lr)
-        self.criterion = CTCLoss(zero_infinity=True).cuda()
-        self.args = args
+def create_supervised_trainer(model, optimizer, criterion, device=None):
+    model.to(device)
 
-    def run(self):
-        for epoch in tqdm(range(self.args.epochs)):
-            train_loader, val_loader = self.get_data_loader()
-            train_bar = tqdm(train_loader)
-            val_bar = tqdm(val_loader)
-            train_bar.set_postfix_str(f"[Train {epoch}/{self.args.epochs}]")
-            val_bar.set_postfix_str(f"[Val {epoch}/{self.args.epochs}]")
-            self.train(train_bar)
-            if epoch % 5 == 0:
-                self.val(val_bar)
-                torch.save(
-                    self.model.state_dict(),
-                    "{0}/netCRNN_{1}.pth".format(self.args.expr_dir, epoch),
-                )
+    def _update(engine, batch):
+        img, texts, length = batch
+        batch_size = img.size(0)
+        img = Variable(img).cuda()
+        optimizer.zero_grad()
+        preds = model(img)
+        preds_size = Variable(torch.LongTensor([preds.size(0)] * batch_size))
+        loss = criterion(preds, texts, preds_size, length) / batch_size
 
-    def get_data_loader(self):
-        # train
-        train_dataset = dataset.lmdbDataset(root=self.args.trainroot)
+        optimizer.step()
+        return loss.item()
 
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset,
-            batch_size=self.args.batch_size,
-            shuffle=True,
-            num_workers=int(self.args.n_cpu),
-            collate_fn=dataset.alignCollate(h=self.args.H, w=self.args.W),
-        )
+    return Engine(_update)
 
-        val_dataset = dataset.lmdbDataset(
-            root=self.args.valroot,
-            transform=dataset.resizeNormalize(h=self.args.H, w=self.args.W),
-        )
-        val_loader = torch.utils.data.DataLoader(
-            val_dataset,
-            shuffle=True,
-            batch_size=self.args.batch_size,
-            num_workers=int(self.args.n_cpu),
-        )
-        return train_loader, val_loader
 
-    def val(self, val_bar):
+def create_supervised_evaluator(model, metrics, device, output_transform=None):
+    if device:
+        model.to(device)
+
+    def _inference(engine, batch):
         with torch.no_grad():
-            self.model.eval()
-            i = 0
-            n_correct = 0
-            val_loss = []
-            for batch in range(val_bar):
-                img, texts, length = batch
-                batch_size = img.size(0)
-                img, texts, length = Variable(img), Variable(texts), Variable(length)
-                img, texts, length = img.cuda(), texts.cuda(), length.cuda()
-                preds = self.model(img)
-                preds_size = Variable(torch.LongTensor([preds.size(0)] * batch_size))
-                loss = self.criterion(preds, texts, preds_size, length) / batch_size
-                val_loss.append(loss.item(0))
-                _, preds = preds.max(2)
-                preds = preds.transpose(1, 0).contiguous().view(-1)
-                # sim_preds = converter.decode(preds.data,
-                #                              preds_size.data,
-                #                              raw=False)
-                # cpu_texts_decode = []
-                # for i in cpu_texts:
-                #     cpu_texts_decode.append(i.decode("utf-8", "strict"))
-                # for pred, target in zip(sim_preds, cpu_texts_decode):
-                #     if pred == target:
-                #         n_correct += 1
-
-            accuracy = n_correct / float(max_iter * params.batchSize)
-            print("Val loss: %f, accuray: %f" % (np.mean(val_loss), accuracy))
-
-    def train(self, train_bar: tqdm):
-        self.model.train()
-        i = 0
-        for batch in train_bar:
-            i += 1
             img, texts, length = batch
             batch_size = img.size(0)
-            img = Variable(img).cuda()
-            self.optimizer.zero_grad()
-            preds = self.model(img)
-            preds_size = Variable(torch.LongTensor([preds.size(0)] * batch_size))
-            loss = self.criterion(preds, texts, preds_size, length) / batch_size
-            self.loss_list.append(random.random())
-            if i % 500 == 0:
-                train_bar.set_description_str(f"Loss {np.mean(self.loss_list)}")
-            #loss.backward()
-            self.optimizer.step()
+            img, texts, length = Variable(img), Variable(texts), Variable(
+                length)
+            img, texts, length = img.cuda(), texts.cuda(), length.cuda()
+            preds = model(img)
+            preds_size = Variable(
+                torch.LongTensor([preds.size(0)] * batch_size))
+            #loss = criterion(preds, texts, preds_size, length) / batch_size
+            _, preds = preds.max(2)
+            preds = preds.transpose(1, 0).contiguous().view(-1)
+            return output_transform(texts, preds)
+
+    evaluator = Engine(_inference)
+
+    for name, metric in metrics.items():
+        metric.attach(evaluator, name)
+
+    return evaluator
+
+
+def get_data_loader(args):
+    # train
+    train_dataset = dataset.lmdbDataset(root=args.trainroot)
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=int(args.n_cpu),
+        collate_fn=dataset.alignCollate(h=args.H, w=args.W),
+    )
+
+    val_dataset = dataset.lmdbDataset(
+        root=args.valroot,
+        transform=dataset.resizeNormalize(h=args.H, w=args.W),
+    )
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        shuffle=True,
+        batch_size=args.batch_size,
+        num_workers=int(args.n_cpu),
+    )
+    return train_loader, val_loader
 
 
 def main():
+    from config.crnn_cfg import lmdb_train_path, lmdb_val_path
+    from util.lmdb_create import create_lmdb
+
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-train", "--trainroot", required=True, help="path to train dataset"
-    )
-    parser.add_argument("-val", "--valroot", required=True, help="path to val dataset")
+    parser.add_argument("-train",
+                        "--trainroot",
+                        default=lmdb_train_path,
+                        required=True,
+                        help="path to train dataset")
+    parser.add_argument("-val",
+                        "--valroot",
+                        default=lmdb_val_path,
+                        required=True,
+                        help="path to val dataset")
     parser.add_argument("-H", type=int, default=32)
     parser.add_argument("-W", type=int, default=100)
+    parser.add_argument('-root', type=str, default='data')
     parser.add_argument("-batch_size", type=int, default=64)
     parser.add_argument("-n_cpu", type=int, default=8)
     parser.add_argument("-epochs", type=int, default=1000)
@@ -135,13 +122,39 @@ def main():
     parser.add_argument("-lr", type=float, default=1e-4)
     args = parser.parse_args()
     print(args)
+    device = torch.device('cuda')
+    model = CRNN(args.nc, args.nclass, args.nh)
+    if args.pretrained:
+        model.load_state_dict(torch.load(args.pretrained))
+    optimizer = optim.RMSprop(model.parameters(), lr=args.lr)
+    criterion = CTCLoss(zero_infinity=True).cuda()
+    if not os.path.exists(lmdb_train_path):
+        create_lmdb(args.root, args.train, args.val)
     if not os.path.exists(args.expr_dir):
         os.makedirs(args.expr_dir)
     if torch.cuda.is_available():
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = True
-    trainer = Trainer(args)
-    trainer.run()
+    train_loader, val_loader = get_data_loader(args)
+    trainer = create_supervised_trainer(model,
+                                        optimizer,
+                                        criterion,
+                                        device=device)
+    evaluator = create_supervised_evaluator(model, {},
+                                            device,
+                                            output_transform=None)
+
+    @trainer.on(Events.ITERATION_COMPLETED)
+    def log_training_loss(engine):
+        pass
+
+    @trainer.on(Events.EPOCH_COMPLETED)
+    def log_test_acc(engine):
+        evaluator.run(val_loader)
+        metric = evaluator.state.metrics
+        print(metric)
+
+    trainer.run(train_loader, max_epochs=args.epochs)
 
 
 if __name__ == "__main__":
