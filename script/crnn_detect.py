@@ -84,7 +84,7 @@ def main():
         preds = model(image)
         _, preds = preds.max(2)
         preds = preds.transpose(1, 0).contiguous().view(-1)
-        preds_size = Variable(torch.LongTensor([26] * size))
+        preds_size = Variable(torch.LongTensor([24] * size))
         # raw_pred = converter.decode(preds.data, preds_size.data, raw=True)
         sim_pred = converter.decode(preds.data, preds_size.data, raw=False)
         # print("%-20s => %-20s" % (raw_pred, sim_pred))

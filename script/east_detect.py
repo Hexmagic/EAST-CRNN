@@ -10,7 +10,7 @@ from torchvision import transforms
 from tqdm import tqdm
 
 import lanms
-from dataset import get_rotate_mat
+from dataset.east import get_rotate_mat
 from model.east import EAST
 
 
@@ -204,18 +204,18 @@ def detect_dataset(model, device, test_img_path, submit_path):
             f.writelines(seq)
 
 
-def detect_boxes(i, paths):
-    with open(f'/content/drive/{i}.json', 'w') as f:
-        rtn = {}
-        for path in tqdm(paths, desc=f"Detector {i}"):
-            arr = cv2.imread(path)
-            img = Image.open(path)
-            #img = new(img)
-            img = img.convert('RGB')
-            img_name = path.split('/')[-1]
-            boxes = detect(img, model, 'cuda:0')
-            rtn[img_name] = infer(boxes, img)
-        json.dump(rtn, f)
+def detect_boxes(model, paths):
+    rtn = {}
+    for path in tqdm(paths, desc=f"Detector "):
+        arr = cv2.imread(path)
+        img = Image.open(path)
+        #img = new(img)
+        img = img.convert('RGB')
+        img_name = path.split('/')[-1]
+        boxes = detect(img, model, 'cuda:0')
+        img = plot_boxes(img, boxes)
+        img.save(f'output/{img_name}')
+        rtn[img_name] = infer(boxes, img)
 
 
 def infer(boxes, img):
@@ -224,12 +224,8 @@ def infer(boxes, img):
         x, y = int(box[0]), int(box[1])
         rx, ry = int(box[4]), int(box[5])
         w, h = rx - x, ry - y
-        #crop = img.crop((x, y, rx + 8, ry))
-        #crop = Image.fromarray(crop)
-        # text = image_to_string(
-        #     crop,
-        #     lang='eng',
-        #     config='--psm 7 --oem 3 -c tessedit_char_whitelist=0123456789ABC')
+        crop = img.crop((x, y, rx, ry))
+        crop = Image.fromarray(crop)
         point.append([x, y, w, h])
     return point
 
@@ -243,7 +239,6 @@ if __name__ == '__main__':
                         type=str,
                         default='',
                         help='detect imgs folder')
-    parser.add_argument('--tessdata', type=str, default='')
     parser.add_argument('--n_cpu', type=int, default=1)
     parser.add_argument('--output',
                         type=str,
@@ -251,7 +246,7 @@ if __name__ == '__main__':
                         help='output folder ,default is output')
     parser.add_argument('--pretrained',
                         type=str,
-                        default='pths/model_epoch_2.pth',
+                        default='pths/east_50.pth',
                         help='pretrained model path')
     opt = parser.parse_args()
     print(opt)
@@ -274,9 +269,6 @@ if __name__ == '__main__':
         names = [
             os.path.join(opt.folder, ele) for ele in os.listdir(opt.folder)
         ]
-        ranges = list(range(opt.n_cpu))
-        for ele in worker.map(detect_boxes, ranges,
-                              names >> split_into_n(opt.n_cpu)):
-            pass
+        detect_boxes(model, names)
     else:
         print("FOlder or Image Should be Provided")

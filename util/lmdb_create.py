@@ -1,11 +1,13 @@
 import argparse
 import os
+import pdb
 import shutil
 import sys
 
 from PIL import Image
-
+from io import BytesIO
 import lmdb
+from config.crnn_cfg import directory
 
 
 def writeCache(env, cache):
@@ -41,6 +43,7 @@ def createDataset(outputPath, imagePathList, labelList):
     env = lmdb.open(outputPath, map_size=1099511627776)
     cache = {}
     cnt = 1
+    vals = set(directory.keys())
     for i in range(nSamples):
         imagePath = imagePathList[i]
         labelPath = labelList[i]
@@ -48,25 +51,29 @@ def createDataset(outputPath, imagePathList, labelList):
             print('%s does not exist' % imagePath)
             continue
         img = Image.open(imagePath)
-        imageBin = img.tobytes()
+
         with open(labelPath, 'r') as f:
             for line in f:
                 lst = line.strip().split(',')
-                key = lst[-1]
-                a, b, c, d, e, f, g, h = key
+                key = lst[-1]                
+                if key not in vals:
+                    continue
+                a, b, c, d, e, f, g, h = list(map(int, lst[:-1]))
                 crop = img.crop([a, b, g, h])
                 imageKey = 'image-%09d' % cnt
                 labelKey = 'label-%09d' % cnt
-                cache[imageKey] = crop.tobytes()
-                cache[labelKey] = key
-                cnt += 1
+                buf = BytesIO()
+                crop.save(buf, format='png')
+                value = buf.getvalue()
+                if len(value) > 0:
+                    cache[imageKey] = value
+                    cache[labelKey] = key
+                    cnt += 1
         if cnt % 1000 == 0:
             writeCache(env, cache)
             cache = {}
-            print('Written %d / %d' % (cnt, nSamples))
-        cnt += 1
-    nSamples = cnt - 1
-    cache['num-samples'] = str(nSamples)
+            print('Written %d ' % (cnt))
+    cache['num-samples'] = str(cnt-1)
     writeCache(env, cache)
     env.close()
     print('Created dataset with %d samples' % nSamples)
@@ -78,7 +85,7 @@ def read_data_from_folder(root):
     pics = os.listdir(f'{root}/img')
     pics.sort(key=lambda i: len(i))
     for pic in pics:
-        img_path = '{root}/img/{pic}'
+        img_path = f'{root}/img/{pic}'
         img_id = pic.split('.')[0]
         label_path = f'{root}/gt/gt_{img_id}.txt'
         image_path_list.append(img_path)
@@ -94,17 +101,6 @@ def show_demo(demo_number, image_path_list, label_list):
     for i in range(demo_number):
         print('image: %s\nlabel: %s\n' % (image_path_list[i], label_list[i]))
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--out',
-                        type=str,
-                        required=True,
-                        help='lmdb data output path')
-    parser.add_argument('--folder',
-                        type=str,
-                        help='path to folder which contains the images')
-    args = parser.parse_args()
 
 from sklearn.model_selection import train_test_split
 

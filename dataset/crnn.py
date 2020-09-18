@@ -12,7 +12,7 @@ from PIL import Image
 import os
 
 
-class lmdbDataset(Dataset):
+class LmdbDataset(Dataset):
     def __init__(self, root=None, transform=None, target_transform=LabelEncoder()):
         if not os.path.exists(root):
             pass
@@ -62,7 +62,7 @@ class lmdbDataset(Dataset):
         return (img, label)
 
 
-class resizeNormalize(object):
+class ResizeNormalize(object):
     def __init__(self, h, w, interpolation=Image.BILINEAR):
         self.size = (w, h)
         self.interpolation = interpolation
@@ -75,18 +75,18 @@ class resizeNormalize(object):
         return img
 
 
-class alignCollate(object):
+class AlignCollate(object):
     def __init__(self, h, w):
         self.imgH = h
         self.imgW = w
 
     def __call__(self, batch):
         images, labels, lengths = zip(*batch)
-        transform = resizeNormalize(self.imgH, self.imgW)
+        transform = ResizeNormalize(self.imgH, self.imgW)
         images = [transform(image) for image in images]
         images = torch.cat([t.unsqueeze(0) for t in images], 0)
         #$labels = torch.stack(labels, dim=1)
-        return images, labels, lengths
+        return images,  torch.flatten(torch.cat(labels)),  tuple(ele.sum() for ele in lengths)
 
 
 if __name__ == "__main__":

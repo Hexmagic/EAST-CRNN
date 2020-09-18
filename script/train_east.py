@@ -30,7 +30,7 @@ def create_supervised_trainer(model, optimizer, criterion, device=None):
 
     return Engine(_update)
 
-
+from dataset.crnn import ResizeNormalize
 if __name__ == '__main__':
     parser = ArgumentParser('EAST Train')
     parser.add_argument('--train_img',
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     parser.add_argument('--start_iter', type=int, default=0, help='start iter')
     #parser.add_argument('--pths', type=str, default='pths', help='weight store folder')
     opt = parser.parse_args()
-
+    
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
     device = torch.device('cuda')
@@ -94,10 +94,10 @@ if __name__ == '__main__':
     @trainer.on(Events.ITERATION_COMPLETED)
     def log_training_loss(engine):
         if engine.state.iteration % opt.log_interval == 0:
-            print("Epoch{}[{}/{}] Loss: {:.2f}".format(engine.state.epoch,
-                                                     engine.state.iteration%(len(train_loader)),
-                                                     len(train_loader),
-                                                     engine.state.output))
+            print("Epoch{}[{}/{}] Loss: {:.2f}".format(
+                engine.state.epoch,
+                engine.state.iteration % (len(train_loader)),
+                len(train_loader), engine.state.output))
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def save_model(engine):
@@ -105,8 +105,7 @@ if __name__ == '__main__':
             state_dict = model.state_dict()
             torch.save(
                 state_dict,
-                os.path.join(
-                    opt.save_folder,
-                    'model_epoch_{}.pth'.format(engine.state.epoch + 1)))
+                os.path.join(opt.save_folder,
+                             'east_{}.pth'.format(engine.state.epoch + 1)))
 
     trainer.run(train_loader, max_epochs=opt.epochs)

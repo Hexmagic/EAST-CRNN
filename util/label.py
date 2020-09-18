@@ -4,7 +4,7 @@
 import pdb
 import torch
 
-from config.words import directory
+from config.crnn_cfg import directory
 
 
 class LabelEncoder(object):
@@ -17,11 +17,10 @@ class LabelEncoder(object):
         alphabet (str): set of the possible characters.
         ignore_case (bool, default=True): whether or not to ignore all of the case.
     """
-
     def __init__(self, ignore_case=False):
         self._ignore_case = ignore_case
         self.words = directory
-        self.words["-"] = len(self.words) + 1
+        self.words["-"] = len(self.words)
 
     def __call__(self, text):
         """Support batch or single str.
@@ -66,10 +65,11 @@ class LabelEncoder(object):
 class LabelDecoder(object):
     def __init__(self, ignore_case=False):
         self._ignore_case = ignore_case
-        self.words = directory
-        self.words["-"] = len(self.words) + 1
+        self.words = {}
+        for k, v in directory.items():
+            self.words[v] = k
 
-    def __call__(self, t, length, raw=False):
+    def decode(self, t, length, raw=False):
         """Decode encoded texts back into strs.
 
         Args:
@@ -87,29 +87,28 @@ class LabelDecoder(object):
             assert (
                 t.numel() == length
             ), "text with length: {} does not match declared length: {}".format(
-                t.numel(), length
-            )
+                t.numel(), length)
             if raw:
-                return "".join([self.alphabet[i - 1] for i in t])
+                return "".join([self.words[i - 1] for i in t])
             else:
                 char_list = []
                 for i in range(length):
                     if t[i] != 0 and (not (i > 0 and t[i - 1] == t[i])):
-                        char_list.append(self.alphabet[t[i] - 1])
+                        char_list.append(self.words[t[i].item()])
                 return "".join(char_list)
         else:
             # batch mode
             assert (
                 t.numel() == length.sum()
             ), "texts with length: {} does not match declared length: {}".format(
-                t.numel(), length.sum()
-            )
+                t.numel(), length.sum())
             texts = []
             index = 0
             for i in range(length.numel()):
                 l = length[i]
                 texts.append(
-                    self.decode(t[index : index + l], torch.LongTensor([l]), raw=raw)
-                )
+                    self.decode(t[index:index + l],
+                                torch.LongTensor([l]),
+                                raw=raw))
                 index += l
             return texts

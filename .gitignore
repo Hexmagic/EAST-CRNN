@@ -33,8 +33,10 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
-
+lmdb_train
+lmdb_val
 # Installer logs
+.vscode
 pip-log.txt
 pip-delete-this-directory.txt
 
