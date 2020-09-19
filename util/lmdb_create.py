@@ -55,9 +55,7 @@ def createDataset(outputPath, imagePathList, labelList):
         with open(labelPath, 'r') as f:
             for line in f:
                 lst = line.strip().split(',')
-                key = lst[-1]                
-                if key not in vals:
-                    continue
+                key = lst[-1].strip('-').split('-')[0]
                 a, b, c, d, e, f, g, h = list(map(int, lst[:-1]))
                 crop = img.crop([a, b, g, h])
                 imageKey = 'image-%09d' % cnt
@@ -73,7 +71,7 @@ def createDataset(outputPath, imagePathList, labelList):
             writeCache(env, cache)
             cache = {}
             print('Written %d ' % (cnt))
-    cache['num-samples'] = str(cnt-1)
+    cache['num-samples'] = str(cnt - 1)
     writeCache(env, cache)
     env.close()
     print('Created dataset with %d samples' % nSamples)
