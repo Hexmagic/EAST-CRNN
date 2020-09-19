@@ -20,6 +20,8 @@ data
   |___ img
   |___ gt
 ```
+下载权重[vgg16_bn-6c64b313.pth](https://download.pytorch.org/models/vgg16_bn-6c64b313.pth)到pths文件夹下面，如果没有就创建pths文件夹
+
 
 # 训练
 
@@ -37,3 +39,7 @@ python script/train_crnn.py
 python demo.py --crnn pths/crnn_20.pth --east pths/east_50.pth --output output
 ```
 执行完成查看效果
+
+# 其他
+
+east采用advance east，使用vgg16作为主干网络，换成默认的PVAnet应该会加快速度

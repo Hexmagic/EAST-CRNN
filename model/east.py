@@ -110,6 +110,7 @@ class extractor(nn.Module):
             vgg16_bn.load_state_dict(
                 torch.load('./pths/vgg16_bn-6c64b313.pth'))
         self.features = vgg16_bn.features
+        
 
     def forward(self, x):
         out = []
